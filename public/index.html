@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Lista de Deseos</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css">
+
+    <style>
+        body.dark-mode {
+            background-color: #121212;
+            color: #e0e0e0;
+        }
+        .dark-mode .title, .dark-mode .list-item {
+            color: #e0e0e0;
+        }
+        .dark-mode .button {
+            background-color: #333;
+            border-color: #444;
+            color: #e0e0e0;
+        }
+        .dark-mode .input {
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            border-color: #444;
+        }
+    </style>
+
+</head>
+<body>
+    <section class="section">
+        <div class="container">
+            <h1 class="title has-text-centered">⭐ Mi Lista de Deseos ⭐</h1>
+            <button class="button is-small is-pulled-right" id="darkModeBtn">Modo Noche</button>
+            <div class="columns is-centered">
+                <div class="column is-half">
+                    <div class="field has-addons">
+                        <div class="control is-expanded">
+                            <input class="input" type="text" id="deseoInput" placeholder="Escribe tu deseo aquí...">
+                        </div>
+                        <div class="control">
+                            <button class="button is-primary" id="agregarBtn">Añadir Deseo</button>
+                        </div>
+                        <div class="control">
+    <button class="button is-info" id="descargarBtn">Descargar Lista</button>
+</div>
+                    </div>
+                    <ul class="list" id="listaDeDeseos">
+                    </ul>
+                    <div class="has-text-centered mt-4">
+                        <button class="button is-small" id="prevPageBtn">Anterior</button>
+                        <span id="pageNumber">Página 1</span>
+                        <button class="button is-small" id="nextPageBtn">Siguiente</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+       const deseoInput = document.getElementById('deseoInput');
+       const agregarBtn = document.getElementById('agregarBtn');
+       const listaDeDeseos = document.getElementById('listaDeDeseos');
+
+       let currentPage = 1;
+
+       const prevPageBtn = document.getElementById('prevPageBtn');
+       const nextPageBtn = document.getElementById('nextPageBtn');
+       const pageNumberSpan = document.getElementById('pageNumber');
+
+       const descargarBtn = document.getElementById('descargarBtn');
+
+      descargarBtn.addEventListener('click', async () => {
+          try {
+              // Hacemos un fetch para pedir TODOS los deseos, no solo los de la primera página.
+              const respuesta = await fetch('/deseos?all=true'); // <-- ¡El cambio está aquí!
+              if (!respuesta.ok) {
+                  throw new Error('No se pudo obtener la lista para descargar.');
+              }
+              const deseos = await respuesta.json();
+
+              // 1. Unimos todos los deseos en una sola cadena de texto.
+              const textoDeseos = deseos.map(deseo => deseo.texto).join('\n');
+
+              // 2. Creamos un "pedazo" de datos.
+              const blob = new Blob([textoDeseos], { type: 'text/plain' });
+
+              // 3. Creamos un link temporal.
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'mi_lista_de_deseos.txt';
+
+              // 4. Hacemos clic en el link para que se inicie la descarga.
+              document.body.appendChild(a);
+              a.click();
+
+              // 5. Limpiamos el link temporal para que no se quede en la página.
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+
+          } catch (error) {
+              console.error('Error al descargar la lista:', error);
+              alert('Hubo un problema al descargar la lista de deseos.');
+          }
+      });
+       // Función para mostrar todos los deseos con paginación y manejo de errores
+       async function cargarDeseos(page = 1) {
+           try {
+               const respuesta = await fetch(`/deseos?page=${page}`);
+               if (!respuesta.ok) {
+                   throw new Error('No se pudo cargar los deseos.');
+               }
+               const deseos = await respuesta.json();
+
+               listaDeDeseos.innerHTML = '';
+               if (deseos.length === 0) {
+                   listaDeDeseos.innerHTML = '<p class="has-text-grey has-text-centered">¡Aún no tienes deseos! Añade uno.</p>';
+               } else {
+                   deseos.forEach(deseo => {
+                       const li = document.createElement('li');
+                       li.className = 'list-item';
+                       li.textContent = deseo.texto;
+                       listaDeDeseos.appendChild(li);
+                   });
+               }
+               
+               // Actualizamos el número de página y el estado de los botones
+               currentPage = page;
+               pageNumberSpan.textContent = `Página ${currentPage}`;
+               prevPageBtn.disabled = currentPage === 1;
+               // Si hay menos deseos de los que caben en una página, deshabilitamos el botón "siguiente".
+               if (deseos.length < 10) {
+                   nextPageBtn.disabled = true;
+               } else {
+                   nextPageBtn.disabled = false;
+               }
+
+           } catch (error) {
+               console.error('Error al cargar los deseos:', error);
+               alert('Hubo un problema al cargar tus deseos. Por favor, intenta de nuevo.');
+           }
+       }
+
+       // Función para añadir un nuevo deseo
+       agregarBtn.addEventListener('click', async () => {
+           const texto = deseoInput.value.trim();
+           if (texto === '') return;
+
+           try {
+               const respuesta = await fetch('/deseos', {
+                   method: 'POST',
+                   headers: {
+                       'Content-Type': 'application/json'
+                   },
+                   body: JSON.stringify({ texto: texto })
+               });
+
+               if (!respuesta.ok) {
+                   const errorData = await respuesta.json();
+                   throw new Error(errorData.error || 'No se pudo guardar el deseo.');
+               }
+
+               deseoInput.value = '';
+               // Al añadir un deseo, volvemos a la primera página para verlo
+               cargarDeseos(1);
+           } catch (error) {
+               console.error('Error al añadir el deseo:', error);
+               alert('Hubo un problema al guardar tu deseo. Por favor, revisa la consola para más detalles.');
+           }
+       });
+
+       // Eventos para los botones de paginación
+       prevPageBtn.addEventListener('click', () => {
+           if (currentPage > 1) {
+               cargarDeseos(currentPage - 1);
+           }
+       });
+
+       nextPageBtn.addEventListener('click', () => {
+           cargarDeseos(currentPage + 1);
+       });
+
+       // Cargamos la primera página de deseos al iniciar
+       cargarDeseos();
+
+       const darkModeBtn = document.getElementById('darkModeBtn');
+       const body = document.body;
+
+       darkModeBtn.addEventListener('click', () => {
+           // Alterna la clase 'dark-mode' en el cuerpo
+           body.classList.toggle('dark-mode');
+           // Guardamos la preferencia del usuario en el navegador
+           if (body.classList.contains('dark-mode')) {
+               localStorage.setItem('theme', 'dark');
+               darkModeBtn.textContent = 'Modo Claro';
+           } else {
+               localStorage.setItem('theme', 'light');
+               darkModeBtn.textContent = 'Modo Noche';
+           }
+       });
+
+       // Revisamos si el usuario ya tenía el modo oscuro activado
+       if (localStorage.getItem('theme') === 'dark') {
+           body.classList.add('dark-mode');
+           darkModeBtn.textContent = 'Modo Claro';
+       }
+    </script>
+</body>
+</html>
